@@ -1,0 +1,33 @@
+{
+    "input_type": "single_dcm",
+    "input_path": "C:\\Users\\moamal\\Downloads\\IMGDATA\\20251102\\S0000001\\I0000003",
+    "temporary_nifti_path": "C:\\Users\\moamal\\AppData\\Local\\Temp\\dicom_pipeline_u9ti1kz5\\input_case.nii.gz",
+    "predicted_mask_path": "C:\\Users\\moamal\\myProjects\\pyProject\\outputs\\predicted_ian_same_shape.nii.gz",
+    "original_shape": [
+        550,
+        550,
+        460
+    ],
+    "downsampled_shape": [
+        256,
+        256,
+        214
+    ],
+    "mode": "automatic_pipeline",
+    "implant_center_voxel": [
+        415,
+        266,
+        294
+    ],
+    "distance_to_nerve_mm": 10.46135762038399,
+    "relative_density_value": 1242.130615234375,
+    "suggested_implant_length_mm": 8.46,
+    "suggested_implant_diameter_mm": 4.0,
+    "suggested_implant_angle_deg": 90.0,
+    "candidate_voxels": 10321982,
+    "voxel_spacing_mm": [
+        0.20000000298023224,
+        0.20000000298023224,
+        0.20000000298023224
+    ]
+}

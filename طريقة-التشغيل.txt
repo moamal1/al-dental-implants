@@ -1,0 +1,26 @@
+python -m venv venv
+
+venv\Scripts\activate
+
+python pipeline.py
+
+
+
+
+# 1. Activate the virtual environment
+venv\Scripts\activate
+
+# 2. Install dependencies (if not already)
+pip install -r requirements.txt
+
+# 3a. Run pipeline with file dialog (interactive)
+python pipeline.py
+
+# 3b. Run pipeline with CLI (DICOM file)
+python pipeline.py --dicom-file path/to/scan.dcm
+
+# 3c. Run pipeline with CLI (DICOM folder)
+python pipeline.py --dicom-folder path/to/series/
+
+# 4. View results
+python viewer.py --planning-json outputs/planning_result.json
