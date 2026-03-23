@@ -122,3 +122,4 @@ Contains bone density classification (Misch scale: D1–D4) and a vectorized den
 - Compressed DICOM formats (JPEG Lossless, JPEG 2000) are supported via `pylibjpeg` + `pylibjpeg-libjpeg` + `pylibjpeg-openjpeg`, with a SimpleITK/GDCM fallback
 - DICOM folder slices are sorted by `ImagePositionPatient[2]` (Z-axis) before volume assembly
 # -------
+# al-dental-implants
