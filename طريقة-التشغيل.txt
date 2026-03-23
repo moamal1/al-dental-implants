@@ -1,26 +1,24 @@
-python -m venv venv
+
+# 1. تشغيل البيئة
 
 venv\Scripts\activate
 
-python pipeline.py
+# 2. تنزيل المكاتب
 
-
-
-
-# 1. Activate the virtual environment
-venv\Scripts\activate
-
-# 2. Install dependencies (if not already)
 pip install -r requirements.txt
 
-# 3a. Run pipeline with file dialog (interactive)
+# 3a. تشغيل ملف (بعد التشغيل راح يطلب منك رفع ملف الاشعة) pipeline 
+
 python pipeline.py
 
-# 3b. Run pipeline with CLI (DICOM file)
-python pipeline.py --dicom-file path/to/scan.dcm
+# 3b. تشغيل ملف  pipeline مع ملف الكيس (DICOM file)
 
-# 3c. Run pipeline with CLI (DICOM folder)
-python pipeline.py --dicom-folder path/to/series/
+python pipeline.py --dicom-file ضع-مسار-الكيس-هنا
 
-# 4. View results
+# 3c. تشغيل ملف pipeline مع مجلد الاشعة (DICOM folder)
+
+python pipeline.py --dicom-folder ضع-مسار-المجلد-هنا
+
+# 4. فتح النتيجة
+
 python viewer.py --planning-json outputs/planning_result.json

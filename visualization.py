@@ -284,12 +284,17 @@ def generate_basic_planning_figure(image, nerve_mask, planning_result, spacing,
     axes[2].set_title(f"Sagittal x={bx}")
     axes[2].axis("off")
 
+    bone_hu = planning_result.get("bone_density_hu", None)
+    bone_cls = planning_result.get("bone_density_class", "")
+    density_str = f"   Bone: {bone_hu:.0f} HU [{bone_cls}]" if bone_hu is not None else ""
+
     summary = (
         f"Center: [{bx}, {by}, {bz}]   "
         f"Length: {length_mm:.2f} mm   "
         f"Diameter: {diameter_mm:.2f} mm   "
-        f"Angle: {angle_deg:.1f} deg   "
+        f"Angle: {angle_deg:.1f}°   "
         f"Distance to nerve: {distance_to_nerve:.2f} mm"
+        f"{density_str}"
     )
     fig.suptitle(summary, fontsize=11)
     plt.tight_layout()
@@ -318,6 +323,8 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     diameter_mm = float(planning_meta["suggested_implant_diameter_mm"])
     angle_deg = float(planning_meta.get("suggested_implant_angle_deg", 90.0))
     distance_to_nerve_mm = float(planning_meta["distance_to_nerve_mm"])
+    bone_hu_meta = planning_meta.get("bone_density_hu", None)
+    bone_cls_meta = planning_meta.get("bone_density_class", "")
     sx, sy, sz = [float(v) for v in spacing]
 
     radius_vox, half_len_vox = compute_implant_voxel_dims(
@@ -327,10 +334,13 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     x1 = max(0, bx - half_len_vox)
     x2 = min(X - 1, bx + half_len_vox)
 
-    # Bone density
+    # Bone density — use pre-computed value from planning if available
     mean_hu, std_hu, bone_class = calculate_bone_density(
         image, [bx, by, bz], radius_vox, half_len_vox
     )
+    if bone_hu_meta is not None:
+        mean_hu = bone_hu_meta
+        bone_class = bone_cls_meta or classify_bone_density(mean_hu)
     print(f"Bone Density: {mean_hu:.1f} +/- {std_hu:.1f} HU  [{bone_class}]")
 
     # ── Prepare slices ───────────────────────────────────────────────────
@@ -462,33 +472,39 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     ax_summary.axis("off")
     summary_lines = [
         "Planning Summary",
-        "------------------------------",
+        "==============================",
         f"Implant Center: [{bx}, {by}, {bz}]",
-        f"Implant Length: {length_mm:.2f} mm",
+        f"Implant Length:   {length_mm:.2f} mm",
         f"Implant Diameter: {diameter_mm:.2f} mm",
-        f"Implant Angle: {angle_deg:.1f} deg",
+        f"Implant Angle:    {angle_deg:.1f}°",
         f"Distance to Nerve: {distance_to_nerve_mm:.2f} mm",
-        "------------------------------",
+        "==============================",
         "BONE DENSITY ANALYSIS",
         "------------------------------",
-        f"Mean Density: {mean_hu:.1f} HU",
+        f"Mean Density:  {mean_hu:.1f} HU",
         f"Std Deviation: {std_hu:.1f} HU",
-        f"Classification: {bone_class}",
+        f">>> Class: {bone_class} <<<",
         "",
-        "HU Ranges for Reference:",
-        "D1: >1250 HU - Dense cortical",
-        "D2: 850-1250 HU - Thick cortical",
-        "D3: 350-850 HU - Thin porous",
-        "D4: <350 HU - Fine trabecular",
+        "HU Classification (Misch):",
+        "  D1: >1250    Dense cortical",
+        "  D2: 850-1250 Thick cortical",
+        "  D3: 350-850  Thin porous",
+        "  D4: <350     Fine trabecular",
         "------------------------------",
+        "Diameter choice by density:",
+        "  D1 -> 3.5mm  D2 -> 4.0mm",
+        "  D3 -> 4.5mm  D4 -> 5.0mm",
+        "Angle choice by density:",
+        "  D1/D2 -> 90°  D3 -> 85°  D4 -> 80°",
+        "==============================",
         f"Voxel Spacing: ({sx:.2f}, {sy:.2f}, {sz:.2f})",
         "",
         "Legend:",
         "Red contour = Predicted nerve",
-        "Blue shape = Implant body",
-        "Red dot = Implant center",
-        "Yellow dot = Section center",
-        "Overlay = Bone density map",
+        "Blue shape  = Implant body",
+        "Red dot     = Implant center",
+        "Yellow dot  = Section center",
+        "Overlay     = Bone density map",
     ]
     ax_summary.text(
         0.02, 0.98, "\n".join(summary_lines),

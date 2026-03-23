@@ -9,10 +9,10 @@ import config
 
 
 def compute_distance_map(nerve_mask, spacing):
-    """Compute distance-from-nerve map in millimeters."""
-    distance_vox = distance_transform_edt(1 - nerve_mask)
-    mean_spacing = float(np.mean(spacing))
-    return distance_vox * mean_spacing
+    """Compute distance-from-nerve map in millimeters (anisotropic-aware)."""
+    sx, sy, sz = [float(v) for v in spacing]
+    distance_vox = distance_transform_edt(1 - nerve_mask, sampling=(sx, sy, sz))
+    return distance_vox
 
 
 def find_candidate_region(image, nerve_mask, distance_mm, shape):
@@ -86,18 +86,61 @@ def score_candidates(candidate_region, distance_mm, smooth_image, shape):
     return int(bx), int(by), int(bz), float(scores[best_idx])
 
 
-def suggest_implant_params(distance_to_nerve_mm):
-    """Calculate suggested implant dimensions based on nerve distance."""
+def suggest_diameter_from_density(mean_hu):
+    """Suggest implant diameter based on bone density (HU).
+
+    Softer bone (D3/D4) benefits from wider implants to improve primary stability.
+    Dense bone (D1/D2) tolerates standard or narrower diameters.
+    """
+    if mean_hu > 1250:      # D1 – dense cortical
+        return 3.5
+    elif mean_hu > 850:     # D2 – thick cortical/porous
+        return 4.0
+    elif mean_hu > 350:     # D3 – thin porous cortical
+        return 4.5
+    else:                   # D4 – fine trabecular
+        return 5.0
+
+
+def suggest_angle_from_density(mean_hu):
+    """Suggest implant angulation based on bone density.
+
+    Softer bone requires more axial alignment to distribute load properly.
+    Dense bone can tolerate slight angulation.
+    """
+    if mean_hu > 850:       # D1 / D2
+        return 90.0
+    elif mean_hu > 350:     # D3
+        return 85.0
+    else:                   # D4
+        return 80.0
+
+
+def suggest_implant_params(distance_to_nerve_mm, mean_hu):
+    """Calculate suggested implant dimensions based on nerve distance and bone density."""
     length = min(
         config.MAX_IMPLANT_LENGTH_MM,
         max(config.MIN_IMPLANT_LENGTH_MM,
             distance_to_nerve_mm - config.NERVE_SAFETY_MARGIN_MM)
     )
+    diameter = suggest_diameter_from_density(mean_hu)
+    angle = suggest_angle_from_density(mean_hu)
     return {
         "length_mm": round(length, 2),
-        "diameter_mm": config.DEFAULT_DIAMETER_MM,
-        "angle_deg": config.DEFAULT_ANGLE_DEG,
+        "diameter_mm": diameter,
+        "angle_deg": angle,
     }
+
+
+def compute_mean_hu_at_site(image, bx, by, bz, radius_vox=8):
+    """Compute mean HU value in a sphere around the implant center."""
+    r = int(radius_vox)
+    x_lo, x_hi = max(0, bx - r), min(image.shape[0], bx + r + 1)
+    y_lo, y_hi = max(0, by - r), min(image.shape[1], by + r + 1)
+    z_lo, z_hi = max(0, bz - r), min(image.shape[2], bz + r + 1)
+
+    region = image[x_lo:x_hi, y_lo:y_hi, z_lo:z_hi]
+    return float(np.mean(region))
 
 
 def plan_implant(image, nerve_mask, spacing):
@@ -122,16 +165,27 @@ def plan_implant(image, nerve_mask, spacing):
 
     distance_to_nerve = float(distance_mm[bx, by, bz])
     density_value = float(smooth_image[bx, by, bz])
-    params = suggest_implant_params(distance_to_nerve)
+
+    # Compute real HU at implant site for diameter / angle decisions
+    mean_hu = compute_mean_hu_at_site(image, bx, by, bz)
+    from visualization import classify_bone_density
+    bone_class = classify_bone_density(mean_hu)
+
+    params = suggest_implant_params(distance_to_nerve, mean_hu)
 
     print(f"Implant center (voxel): [{bx}, {by}, {bz}]")
     print(f"Distance to nerve: {distance_to_nerve:.2f} mm")
+    print(f"Bone density (HU): {mean_hu:.1f}  [{bone_class}]")
     print(f"Suggested length: {params['length_mm']} mm")
+    print(f"Suggested diameter: {params['diameter_mm']} mm")
+    print(f"Suggested angle: {params['angle_deg']} deg")
 
     return {
         "implant_center_voxel": [bx, by, bz],
         "distance_to_nerve_mm": distance_to_nerve,
         "relative_density_value": density_value,
+        "bone_density_hu": round(mean_hu, 1),
+        "bone_density_class": bone_class,
         "suggested_implant_length_mm": params["length_mm"],
         "suggested_implant_diameter_mm": params["diameter_mm"],
         "suggested_implant_angle_deg": params["angle_deg"],
