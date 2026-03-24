@@ -2,7 +2,7 @@
 Main pipeline: DICOM input -> IAN nerve segmentation -> implant planning.
 
 Usage:
-    # Interactive mode (file dialog):
+    # Interactive mode (file dialog + click on CT image to select target):
     python pipeline.py
 
     # CLI mode with a single DICOM file:
@@ -10,6 +10,18 @@ Usage:
 
     # CLI mode with a DICOM folder:
     python pipeline.py --dicom-folder path/to/series/
+
+    # Select implant target point (±5 voxel ROI by default):
+    python pipeline.py --dicom-file scan.dcm --target-point 120,80,64
+
+    # Select target point with custom mm-radius:
+    python pipeline.py --dicom-file scan.dcm --target-point 120,80,64 --target-radius 3.0
+
+    # Restrict planning to the left side of the jaw:
+    python pipeline.py --dicom-file scan.dcm --target-side left
+
+    # Restrict planning to a bounding box:
+    python pipeline.py --dicom-file scan.dcm --target-bbox 50,40,20,180,120,80
 
     # Specify custom model or output directory:
     python pipeline.py --dicom-file scan.dcm --model model.pth --output-dir ./results
@@ -28,7 +40,7 @@ import config
 from dicom_utils import convert_single_dicom_to_nifti, convert_dicom_folder_to_nifti
 from inference import load_model, preprocess_image, run_inference, postprocess_prediction
 from planning import plan_implant
-from visualization import generate_basic_planning_figure
+from visualization import generate_basic_planning_figure, interactive_point_selector
 
 
 def select_input_interactive():
@@ -62,6 +74,36 @@ def select_input_interactive():
         return "dicom_folder", path
 
 
+def select_target_interactive():
+    """Show a tkinter dialog asking the user how to select the target region.
+
+    Returns 'click' (to use image-based selector later), a target_region
+    dict, or None (automatic / whole jaw).
+    """
+    import tkinter as tk
+    from tkinter import simpledialog, messagebox
+
+    root = tk.Tk()
+    root.withdraw()
+
+    choice = messagebox.askyesnocancel(
+        "Target Region Selection",
+        "Would you like to select the implant location on the image?\n\n"
+        "Yes    →  Click on the CT image to choose the exact spot\n"
+        "No     →  Plan on the entire jaw (automatic)\n"
+        "Cancel →  Abort",
+    )
+
+    if choice is None:
+        print("Planning cancelled by user.")
+        sys.exit(0)
+
+    if choice:
+        return "click"  # will show interactive_point_selector later
+
+    return None  # whole jaw
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Dental Implant Planning Pipeline"
@@ -71,7 +113,52 @@ def parse_args():
     group.add_argument("--dicom-folder", type=str, help="Path to a DICOM series folder")
     parser.add_argument("--model", type=str, default=None, help="Path to model weights (.pth)")
     parser.add_argument("--output-dir", type=str, default=None, help="Output directory")
+
+    # ── Target region selection ──────────────────────────────────────
+    target_grp = parser.add_mutually_exclusive_group()
+    target_grp.add_argument(
+        "--target-side", type=str, choices=["left", "right"],
+        help="Restrict planning to left or right side of the jaw",
+    )
+    target_grp.add_argument(
+        "--target-point", type=str, metavar="X,Y,Z",
+        help="Approximate target voxel coordinate, e.g. '120,80,64'",
+    )
+    target_grp.add_argument(
+        "--target-bbox", type=str, metavar="X0,Y0,Z0,X1,Y1,Z1",
+        help="Target bounding box in voxel coordinates",
+    )
+    parser.add_argument(
+        "--target-radius", type=float, default=None,
+        help="Radius in mm around --target-point (default: %(default)s)",
+    )
+
     return parser.parse_args()
+
+
+def build_target_region_from_args(args):
+    """Convert CLI target arguments into a target_region dict (or None)."""
+    if args.target_side:
+        return {"type": "side", "value": args.target_side}
+
+    if args.target_point:
+        coords = [int(v) for v in args.target_point.split(",")]
+        if len(coords) != 3:
+            raise ValueError("--target-point must have exactly 3 values: X,Y,Z")
+        if args.target_radius is not None:
+            # Explicit radius → mm-based sphere
+            return {"type": "point", "voxel": coords,
+                    "radius_mm": args.target_radius}
+        # No radius → tight voxel-based ROI (±5 voxels)
+        return {"type": "roi", "voxel": coords}
+
+    if args.target_bbox:
+        vals = [int(v) for v in args.target_bbox.split(",")]
+        if len(vals) != 6:
+            raise ValueError("--target-bbox must have exactly 6 values: X0,Y0,Z0,X1,Y1,Z1")
+        return {"type": "bbox", "min": vals[:3], "max": vals[3:]}
+
+    return None
 
 
 def main():
@@ -135,11 +222,32 @@ def main():
     print(f"  Saved predicted mask: {pred_mask_path}")
 
     # ── Step 5: Plan implant ──────────────────────────────────────────
-    print("Planning implant placement...")
-    planning_result = plan_implant(orig_img, pred_mask, (sx, sy, sz))
+    print("\nPlanning implant placement...")
+    target_region = build_target_region_from_args(args)
+
+    # In GUI mode with no CLI target, offer interactive selection
+    if target_region is None and not args.dicom_file and not args.dicom_folder:
+        user_choice = select_target_interactive()
+        if user_choice == "click":
+            print("Opening interactive point selector ...")
+            clicked = interactive_point_selector(orig_img, pred_mask)
+            if clicked is not None:
+                bx, by, bz = clicked
+                target_region = {"type": "roi", "voxel": [bx, by, bz]}
+                print(f"  User selected: [{bx}, {by}, {bz}]")
+            else:
+                print("  No point selected — using whole jaw.")
+        elif isinstance(user_choice, dict):
+            target_region = user_choice
+
+    if target_region is not None:
+        print(f"  Target region: {target_region}")
+
+    planning_result = plan_implant(orig_img, pred_mask, (sx, sy, sz),
+                                   target_region=target_region)
 
     # ── Step 6: Generate visualization ────────────────────────────────
-    print("Generating planning figure...")
+    print("\nGenerating planning figure...")
     generate_basic_planning_figure(
         orig_img, pred_mask, planning_result, (sx, sy, sz), output_png
     )

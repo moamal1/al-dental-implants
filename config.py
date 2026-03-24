@@ -20,27 +20,36 @@ UNET_CHANNELS = (16, 32, 64, 128)
 UNET_STRIDES = (2, 2, 2)
 UNET_NUM_RES_UNITS = 2
 
-# ── Planning Parameters ─────────────────────────────────────────────────────
-MARGIN_FRACTION = 0.08
-LOWER_JAW_FRACTION = 0.40
-CENTRAL_Y_RANGE = (0.15, 0.85)
-MID_Z_RANGE = (0.25, 0.80)
-DENSITY_PERCENTILE_LOW = 55
-DENSITY_PERCENTILE_HIGH = 97
-SAFE_DISTANCE_RANGE_MM = (2.0, 12.0)
-DEFAULT_DIAMETER_MM = 4.0
-DEFAULT_ANGLE_DEG = 90.0
-MIN_IMPLANT_LENGTH_MM = 8.0
-MAX_IMPLANT_LENGTH_MM = 12.0
+# ── Bone Detection (HU thresholds) ──────────────────────────────────────────
+BONE_HU_MIN = 300       # Minimum HU for cortical/cancellous bone
+BONE_HU_MAX = 3000      # Maximum HU (above this is likely metal artifact)
+
+# ── Edge Protection ─────────────────────────────────────────────────────────
+EDGE_MARGIN_FRACTION = 0.15   # Hard exclusion zone: 15% of each dimension
+
+# ── Nerve Safety ─────────────────────────────────────────────────────────────
 NERVE_SAFETY_MARGIN_MM = 2.0
-MAX_CANDIDATE_SAMPLES = 12000
 
-# ── Scoring Weights ─────────────────────────────────────────────────────────
-SCORE_WEIGHT_DISTANCE = 0.55
-SCORE_WEIGHT_DENSITY = 0.45
-CENTRALITY_PENALTY_Y = 0.03
-CENTRALITY_PENALTY_Z = 0.02
+# ── Bone Wall Margin ─────────────────────────────────────────────────────────
+BONE_WALL_MARGIN_MM = 1.0    # Minimum distance from implant surface to bone wall
 
+# ── Implant Dimensions ──────────────────────────────────────────────────────
+MIN_IMPLANT_LENGTH_MM = 8.0
+MAX_IMPLANT_LENGTH_MM = 14.0
+DEFAULT_DIAMETER_MM = 4.0
+MIN_DIAMETER_MM = 3.0
+MAX_DIAMETER_MM = 5.0
+
+# ── Angle Estimation ────────────────────────────────────────────────────────
+AXIS_ROI_RADIUS = 15     # Voxel radius for local gradient estimation
+MIN_ANGLE_DEG = 75.0     # Minimum allowed implant angle
+MAX_ANGLE_DEG = 95.0     # Maximum allowed implant angle
+
+# ── Candidate Selection ──────────────────────────────────────────────────────
+MAX_CANDIDATE_SAMPLES = 15000
+# ── Target Region Selection ──────────────────────────────────────────────
+CLICK_ROI_HALF_SIZE = 5           # ±N voxels around user-clicked point
+DEFAULT_TARGET_RADIUS_MM = 5.0    # Radius in mm around a CLI-specified point
 # ── Viewer Parameters ───────────────────────────────────────────────────────
 NERVE_MASK_MIN_COMPONENT_SIZE = 150
 NERVE_MASK_KEEP_COMPONENTS = 2

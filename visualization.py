@@ -22,6 +22,9 @@ from scipy.ndimage import (
 
 import config
 
+NERVE_OVERLAY_COLOR = "darkorange"
+IMPLANT_CENTER_COLOR = "deepskyblue"
+
 # ── Density overlay colormap ────────────────────────────────────────────────
 _DENSITY_COLORS = [
     (0.2, 0.2, 0.2, 0.0),
@@ -145,7 +148,7 @@ def calculate_bone_density(image, center_vox, radius_vox, half_len_vox):
 def add_implant_axial(ax, cx, cy, r):
     """Draw implant cross-section on an axial view."""
     ax.add_patch(Circle((cx, cy), r, fill=False, color="deepskyblue", linewidth=2.8))
-    ax.scatter(cx, cy, c="red", s=40, zorder=5)
+    ax.scatter(cx, cy, c=IMPLANT_CENTER_COLOR, s=40, zorder=5)
 
 
 def add_implant_coronal(ax, zc, xc, r, x_start, x_end):
@@ -155,13 +158,13 @@ def add_implant_coronal(ax, zc, xc, r, x_start, x_end):
         fill=False, edgecolor="deepskyblue", linewidth=2.8,
     )
     ax.add_patch(body)
-    ax.scatter(zc, xc, c="red", s=40, zorder=5)
+    ax.scatter(zc, xc, c=IMPLANT_CENTER_COLOR, s=40, zorder=5)
 
 
 def add_implant_sagittal(ax, zc, yc, r):
     """Draw implant cross-section on a sagittal view."""
     ax.add_patch(Circle((zc, yc), r, fill=False, color="deepskyblue", linewidth=2.8))
-    ax.scatter(zc, yc, c="red", s=40, zorder=5)
+    ax.scatter(zc, yc, c=IMPLANT_CENTER_COLOR, s=40, zorder=5)
 
 
 def add_density_overlay(ax, image_slice, center_point, radius):
@@ -186,7 +189,7 @@ def draw_cross_section(ax, image, nerve_mask, x_idx, center_y, center_z,
 
     ax.imshow(sec_img, cmap="gray", origin="lower")
     if np.any(sec_mask):
-        ax.contour(sec_mask, levels=[0.5], colors="red", linewidths=1.4)
+        ax.contour(sec_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.4)
 
     rect = Rectangle(
         (center_z - radius_vox, center_y - half_len_vox),
@@ -230,17 +233,240 @@ def build_tangential_view(image, nerve_mask, bx, by, bz, width=50):
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# Interactive point selector (mouse-click on CT)
+# ═══════════════════════════════════════════════════════════════════════════
+
+def interactive_point_selector(image, nerve_mask):
+    """Show an interactive 3-panel viewer for the user to click the implant
+    target point directly on the CT image.
+
+    Controls:
+        Scroll wheel      — browse slices
+        Left-click         — select / move the target point
+        Enter              — confirm selection
+        Escape / close     — cancel
+
+    Returns (bx, by, bz) voxel coordinates, or None if cancelled.
+    """
+    X, Y, Z = image.shape
+
+    state = {
+        "z": Z // 2,       # current axial slice index
+        "y": Y // 2,       # current coronal slice index
+        "x": X // 2,       # current sagittal slice index
+        "selected": None,  # (bx, by, bz) when user clicks
+    }
+
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig.suptitle(
+        "Click on the image to select the implant target location\n"
+        "Scroll = browse slices  |  Enter = confirm  |  Escape = cancel",
+        fontsize=12,
+    )
+
+    def _redraw():
+        for ax in axes:
+            ax.clear()
+
+        z, y, x = state["z"], state["y"], state["x"]
+
+        # ── Axial (X-Y plane at z) ──
+        axes[0].imshow(norm_slice(image[:, :, z]), cmap="gray", origin="lower")
+        axes[0].axhline(y=x, color="yellow", lw=0.5, alpha=0.4)
+        axes[0].axvline(x=y, color="yellow", lw=0.5, alpha=0.4)
+        axes[0].set_title(f"Axial  z={z}", fontsize=11)
+        axes[0].axis("off")
+
+        # ── Coronal (X-Z plane at y) ──
+        axes[1].imshow(norm_slice(image[:, y, :]), cmap="gray", origin="lower")
+        axes[1].axhline(y=x, color="yellow", lw=0.5, alpha=0.4)
+        axes[1].axvline(x=z, color="yellow", lw=0.5, alpha=0.4)
+        axes[1].set_title(f"Coronal  y={y}", fontsize=11)
+        axes[1].axis("off")
+
+        # ── Sagittal (Y-Z plane at x) ──
+        axes[2].imshow(norm_slice(image[x, :, :]), cmap="gray", origin="lower")
+        axes[2].axhline(y=y, color="yellow", lw=0.5, alpha=0.4)
+        axes[2].axvline(x=z, color="yellow", lw=0.5, alpha=0.4)
+        axes[2].set_title(f"Sagittal  x={x}", fontsize=11)
+        axes[2].axis("off")
+
+        # ── Draw selected point as green + on every panel ──
+        if state["selected"] is not None:
+            bx, by, bz = state["selected"]
+            hs = config.CLICK_ROI_HALF_SIZE
+            # Axial
+            axes[0].scatter(by, bx, c="lime", s=90, marker="+", linewidths=2, zorder=10)
+            axes[0].add_patch(Rectangle(
+                (by - hs, bx - hs), 2 * hs, 2 * hs,
+                fill=False, edgecolor="lime", lw=1.4, linestyle="--",
+            ))
+            # Coronal
+            axes[1].scatter(bz, bx, c="lime", s=90, marker="+", linewidths=2, zorder=10)
+            axes[1].add_patch(Rectangle(
+                (bz - hs, bx - hs), 2 * hs, 2 * hs,
+                fill=False, edgecolor="lime", lw=1.4, linestyle="--",
+            ))
+            # Sagittal
+            axes[2].scatter(bz, by, c="lime", s=90, marker="+", linewidths=2, zorder=10)
+            axes[2].add_patch(Rectangle(
+                (bz - hs, by - hs), 2 * hs, 2 * hs,
+                fill=False, edgecolor="lime", lw=1.4, linestyle="--",
+            ))
+
+        fig.canvas.draw_idle()
+
+    def _on_scroll(event):
+        if event.inaxes == axes[0]:
+            state["z"] = int(np.clip(
+                state["z"] + (1 if event.button == "up" else -1), 0, Z - 1))
+        elif event.inaxes == axes[1]:
+            state["y"] = int(np.clip(
+                state["y"] + (1 if event.button == "up" else -1), 0, Y - 1))
+        elif event.inaxes == axes[2]:
+            state["x"] = int(np.clip(
+                state["x"] + (1 if event.button == "up" else -1), 0, X - 1))
+        else:
+            return
+        _redraw()
+
+    def _on_click(event):
+        if event.inaxes is None or event.button != 1:
+            return
+        col = int(round(event.xdata))
+        row = int(round(event.ydata))
+
+        if event.inaxes == axes[0]:          # Axial: row→X, col→Y
+            bx, by, bz = row, col, state["z"]
+        elif event.inaxes == axes[1]:        # Coronal: row→X, col→Z
+            bx, by, bz = row, state["y"], col
+        elif event.inaxes == axes[2]:        # Sagittal: row→Y, col→Z
+            bx, by, bz = state["x"], row, col
+        else:
+            return
+
+        bx = int(np.clip(bx, 0, X - 1))
+        by = int(np.clip(by, 0, Y - 1))
+        bz = int(np.clip(bz, 0, Z - 1))
+
+        state["selected"] = (bx, by, bz)
+        state["x"], state["y"], state["z"] = bx, by, bz
+        fig.suptitle(
+            f"Selected: [{bx}, {by}, {bz}]  —  "
+            "Press Enter to confirm  |  Click to change  |  Escape to cancel",
+            fontsize=12, color="green",
+        )
+        _redraw()
+
+    def _on_key(event):
+        if event.key == "escape":
+            state["selected"] = None
+            plt.close(fig)
+        elif event.key == "enter" and state["selected"] is not None:
+            plt.close(fig)
+
+    fig.canvas.mpl_connect("scroll_event", _on_scroll)
+    fig.canvas.mpl_connect("button_press_event", _on_click)
+    fig.canvas.mpl_connect("key_press_event", _on_key)
+
+    _redraw()
+    plt.tight_layout()
+    plt.show()  # blocks until user closes the window
+
+    return state["selected"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # Basic 3-view planning figure (pipeline output)
 # ═══════════════════════════════════════════════════════════════════════════
+
+def _draw_axis_on_view(ax, center_2d, axis_proj_2d, half_len_vox):
+    """Draw the implant axis arrow on a 2-D view."""
+    c0, c1 = center_2d
+    d0, d1 = axis_proj_2d
+    ax.annotate(
+        "", xy=(c1 + d1 * half_len_vox, c0 + d0 * half_len_vox),
+        xytext=(c1 - d1 * half_len_vox, c0 - d0 * half_len_vox),
+        arrowprops=dict(arrowstyle="->", color="lime", lw=2.2),
+    )
+
+
+def _draw_target_side_overlay(ax, image_shape_2d, side, z_slice_idx, view):
+    """Draw a translucent overlay showing the selected jaw side.
+
+    Parameters:
+        ax:              matplotlib axes
+        image_shape_2d:  (rows, cols) of the displayed slice
+        side:            'left' or 'right'
+        z_slice_idx:     the z-index of the displayed slice (for views that contain Z)
+        view:            'axial' | 'coronal' | 'sagittal'
+    """
+    rows, cols = image_shape_2d
+    mid_z = cols // 2 if view in ("axial", "coronal") else None
+
+    if mid_z is None:
+        return  # sagittal is a single Z slice — no boundary to show
+
+    if side == "left":
+        rect = Rectangle((0, 0), mid_z, rows, color="cyan", alpha=0.08)
+    else:
+        rect = Rectangle((mid_z, 0), cols - mid_z, rows, color="cyan", alpha=0.08)
+    ax.add_patch(rect)
+    ax.axvline(x=mid_z, color="cyan", linewidth=1.2, linestyle="--", alpha=0.6)
+
+
+def _draw_roi_overlay(ax, target_region, view):
+    """Draw the user-selected ROI box and click-point on a 2-D view.
+
+    Parameters:
+        ax:             matplotlib axes
+        target_region:  dict with type='roi', voxel=[x,y,z], half_size=N
+        view:           'axial' | 'coronal' | 'sagittal'
+    """
+    vx, vy, vz = target_region["voxel"]
+    hs = target_region.get("half_size", config.CLICK_ROI_HALF_SIZE)
+
+    if view == "axial":
+        center_h, center_v = vy, vx          # imshow cols=Y, rows=X
+    elif view == "coronal":
+        center_h, center_v = vz, vx          # imshow cols=Z, rows=X
+    elif view == "sagittal":
+        center_h, center_v = vz, vy          # imshow cols=Z, rows=Y
+    else:
+        return
+
+    ax.scatter(center_h, center_v, c="lime", s=90, marker="+",
+               linewidths=2, zorder=10, label="User click")
+    ax.add_patch(Rectangle(
+        (center_h - hs, center_v - hs), 2 * hs, 2 * hs,
+        fill=False, edgecolor="lime", linewidth=1.4, linestyle="--",
+    ))
+
+
+def _draw_target_region(ax, target_region, view, slice_shape):
+    """Dispatch target-region overlay drawing based on type."""
+    if target_region is None:
+        return
+    rtype = target_region.get("type", "")
+    if rtype == "side":
+        _draw_target_side_overlay(
+            ax, slice_shape, target_region["value"], 0, view)
+    elif rtype in ("roi", "point"):
+        _draw_roi_overlay(ax, target_region, view)
+
 
 def generate_basic_planning_figure(image, nerve_mask, planning_result, spacing,
                                    output_path):
     """Generate the basic 3-panel (axial/coronal/sagittal) planning figure."""
-    bx, by, bz = planning_result["implant_center_voxel"]
-    length_mm = planning_result["suggested_implant_length_mm"]
-    diameter_mm = planning_result["suggested_implant_diameter_mm"]
-    angle_deg = planning_result["suggested_implant_angle_deg"]
-    distance_to_nerve = planning_result["distance_to_nerve_mm"]
+    bx, by, bz = planning_result["implant_center"]
+    length_mm = planning_result["implant_length"]
+    diameter_mm = planning_result["implant_diameter"]
+    angle_deg = planning_result["implant_angle"]
+    nerve_distance = planning_result["nerve_distance"]
+    bone_class = planning_result.get("bone_density_class", "")
+    bone_hu = planning_result.get("bone_density_hu", None)
+    axis_vec = planning_result.get("implant_axis_vector", [1, 0, 0])
+    target_region = planning_result.get("target_region", None)
 
     radius_vox, half_len_vox = compute_implant_voxel_dims(
         diameter_mm, length_mm, spacing
@@ -251,50 +477,70 @@ def generate_basic_planning_figure(image, nerve_mask, planning_result, spacing,
 
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
-    # Axial
+    # Axial (x-y plane at z=bz)
     axes[0].imshow(image[:, :, bz], cmap="gray")
     axes[0].imshow(nerve_mask[:, :, bz], alpha=0.25)
-    axes[0].scatter(by, bx, c="red", s=70, label="Implant center")
+    axes[0].scatter(by, bx, c=IMPLANT_CENTER_COLOR, s=70, label="Implant center")
     axes[0].add_patch(
         Circle((by, bx), radius_vox, fill=False, color="yellow", linewidth=2)
     )
+    _draw_axis_on_view(axes[0], (bx, by), (axis_vec[0], axis_vec[1]), half_len_vox)
     axes[0].set_title(f"Axial z={bz}")
     axes[0].axis("off")
     axes[0].legend(loc="lower right", fontsize=8)
+    _draw_target_region(axes[0], target_region, "axial", image[:, :, bz].shape)
 
-    # Coronal
+    # Coronal (x-z plane at y=by)
     axes[1].imshow(image[:, by, :], cmap="gray")
     axes[1].imshow(nerve_mask[:, by, :], alpha=0.25)
-    axes[1].scatter(bz, bx, c="red", s=70)
+    # Bone boundary contour
+    coronal_bone = (image[:, by, :] >= config.BONE_HU_MIN) & (image[:, by, :] <= config.BONE_HU_MAX)
+    if np.any(coronal_bone):
+        axes[1].contour(coronal_bone.astype(np.float32), levels=[0.5],
+                        colors="orange", linewidths=1.0, linestyles="dashed")
+    axes[1].scatter(bz, bx, c=IMPLANT_CENTER_COLOR, s=70)
     axes[1].plot([bz, bz], [x1, x2], color="yellow", linewidth=4)
     axes[1].plot(
         [bz - radius_vox, bz + radius_vox], [bx, bx],
         color="yellow", linewidth=3,
     )
+    _draw_axis_on_view(axes[1], (bx, bz), (axis_vec[0], axis_vec[2]), half_len_vox)
     axes[1].set_title(f"Coronal y={by}")
     axes[1].axis("off")
+    _draw_target_region(axes[1], target_region, "coronal", image[:, by, :].shape)
 
-    # Sagittal
+    # Sagittal (y-z plane at x=bx)
     axes[2].imshow(image[bx, :, :], cmap="gray")
     axes[2].imshow(nerve_mask[bx, :, :], alpha=0.25)
-    axes[2].scatter(bz, by, c="red", s=70)
+    axes[2].scatter(bz, by, c=IMPLANT_CENTER_COLOR, s=70)
     axes[2].add_patch(
         Circle((bz, by), radius_vox, fill=False, color="yellow", linewidth=2)
     )
+    _draw_axis_on_view(axes[2], (by, bz), (axis_vec[1], axis_vec[2]), half_len_vox)
     axes[2].set_title(f"Sagittal x={bx}")
     axes[2].axis("off")
 
-    bone_hu = planning_result.get("bone_density_hu", None)
-    bone_cls = planning_result.get("bone_density_class", "")
-    density_str = f"   Bone: {bone_hu:.0f} HU [{bone_cls}]" if bone_hu is not None else ""
+    density_str = f"   Bone: {bone_hu:.0f} HU [{bone_class}]" if bone_hu is not None else ""
+
+    target_str = ""
+    if target_region:
+        rtype = target_region.get("type", "")
+        if rtype == "side":
+            target_str = f"   Target: {target_region['value']} side"
+        elif rtype == "roi":
+            target_str = f"   Target: click {target_region['voxel']}"
+        elif rtype == "point":
+            target_str = f"   Target: point {target_region['voxel']}"
+        elif rtype == "bbox":
+            target_str = f"   Target: bbox"
 
     summary = (
         f"Center: [{bx}, {by}, {bz}]   "
         f"Length: {length_mm:.2f} mm   "
         f"Diameter: {diameter_mm:.2f} mm   "
         f"Angle: {angle_deg:.1f}°   "
-        f"Distance to nerve: {distance_to_nerve:.2f} mm"
-        f"{density_str}"
+        f"Nerve distance: {nerve_distance:.2f} mm"
+        f"{density_str}{target_str}"
     )
     fig.suptitle(summary, fontsize=11)
     plt.tight_layout()
@@ -318,13 +564,23 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
         spacing: tuple (sx, sy, sz) in mm
         output_path: path to save the output PNG
     """
-    bx, by, bz = planning_meta["implant_center_voxel"]
-    length_mm = float(planning_meta["suggested_implant_length_mm"])
-    diameter_mm = float(planning_meta["suggested_implant_diameter_mm"])
-    angle_deg = float(planning_meta.get("suggested_implant_angle_deg", 90.0))
-    distance_to_nerve_mm = float(planning_meta["distance_to_nerve_mm"])
+    # Support both old and new key names for backward compatibility
+    bx, by, bz = planning_meta.get("implant_center",
+                                    planning_meta.get("implant_center_voxel", [0, 0, 0]))
+    length_mm = float(planning_meta.get("implant_length",
+                                        planning_meta.get("suggested_implant_length_mm", 10.0)))
+    diameter_mm = float(planning_meta.get("implant_diameter",
+                                          planning_meta.get("suggested_implant_diameter_mm", 4.0)))
+    angle_deg = float(planning_meta.get("implant_angle",
+                                        planning_meta.get("suggested_implant_angle_deg", 90.0)))
+    distance_to_nerve_mm = float(planning_meta.get("nerve_distance",
+                                                    planning_meta.get("distance_to_nerve_mm", 0.0)))
     bone_hu_meta = planning_meta.get("bone_density_hu", None)
     bone_cls_meta = planning_meta.get("bone_density_class", "")
+    axis_vec = planning_meta.get("implant_axis_vector", [1, 0, 0])
+    bone_thickness_mm = planning_meta.get("bone_thickness_mm", None)
+    wall_distance_mm = planning_meta.get("wall_distance_mm", None)
+    target_region = planning_meta.get("target_region", None)
     sx, sy, sz = [float(v) for v in spacing]
 
     radius_vox, half_len_vox = compute_implant_voxel_dims(
@@ -391,25 +647,32 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     ax.imshow(axial_img, cmap="gray", origin="lower")
     add_density_overlay(ax, axial_img, [by, bx], radius_vox)
     if np.any(axial_mask):
-        ax.contour(axial_mask, levels=[0.5], colors="red", linewidths=1.6)
+        ax.contour(axial_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.6)
     add_implant_axial(ax, by, bx, radius_vox)
     ax.set_title(f"Axial View (z={bz})", fontsize=13)
     ax.axis("off")
+    _draw_target_region(ax, target_region, "axial", axial_img.shape)
 
     ax = axes[1]
     ax.imshow(coronal_img, cmap="gray", origin="lower")
     add_density_overlay(ax, coronal_img, [bz, bx], radius_vox)
+    # Bone boundary contour on coronal slice
+    coronal_bone = (image[:, by, :] >= config.BONE_HU_MIN) & (image[:, by, :] <= config.BONE_HU_MAX)
+    if np.any(coronal_bone):
+        ax.contour(coronal_bone.astype(np.float32), levels=[0.5],
+                   colors="orange", linewidths=1.0, linestyles="dashed")
     if np.any(coronal_mask):
-        ax.contour(coronal_mask, levels=[0.5], colors="red", linewidths=1.6)
+        ax.contour(coronal_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.6)
     add_implant_coronal(ax, bz, bx, radius_vox, x1, x2)
     ax.set_title(f"Coronal View (y={by})", fontsize=13)
     ax.axis("off")
+    _draw_target_region(ax, target_region, "coronal", coronal_img.shape)
 
     ax = axes[2]
     ax.imshow(sagittal_img, cmap="gray", origin="lower")
     add_density_overlay(ax, sagittal_img, [bz, by], radius_vox)
     if np.any(sagittal_mask):
-        ax.contour(sagittal_mask, levels=[0.5], colors="red", linewidths=1.6)
+        ax.contour(sagittal_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.6)
     add_implant_sagittal(ax, bz, by, radius_vox)
     ax.set_title(f"Sagittal View (x={bx})", fontsize=13)
     ax.axis("off")
@@ -420,7 +683,7 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     ax.imshow(zoom_axial_img, cmap="gray", origin="lower")
     add_density_overlay(ax, zoom_axial_img, [local_cx, local_cy], radius_vox)
     if np.any(zoom_axial_mask):
-        ax.contour(zoom_axial_mask, levels=[0.5], colors="red", linewidths=1.4)
+        ax.contour(zoom_axial_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.4)
     add_implant_axial(ax, local_cx, local_cy, radius_vox)
     ax.set_title("Implant Site Zoom", fontsize=13)
     ax.axis("off")
@@ -435,7 +698,7 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     ax = axes[7]
     ax.imshow(tang_img, cmap="gray", origin="lower", aspect="auto")
     if np.any(tang_mask):
-        ax.contour(tang_mask, levels=[0.5], colors="red", linewidths=1.4)
+        ax.contour(tang_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.4)
     tang_y, tang_z = bx, bz
     ax.add_patch(Rectangle(
         (tang_z - radius_vox, tang_y - half_len_vox),
@@ -454,7 +717,7 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
     # Row 3: Panoramic + Summary
     ax_pano.imshow(pano_img, cmap="gray", origin="lower", aspect="auto")
     if np.any(pano_mask):
-        ax_pano.contour(pano_mask, levels=[0.5], colors="red", linewidths=1.2)
+        ax_pano.contour(pano_mask, levels=[0.5], colors=NERVE_OVERLAY_COLOR, linewidths=1.2)
     ax_pano.add_patch(Rectangle(
         (bz - radius_vox, by - half_len_vox),
         2 * radius_vox, 2 * half_len_vox,
@@ -464,26 +727,48 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
         [bz, bz], [by - half_len_vox, by + half_len_vox],
         color="deepskyblue", linewidth=2.8,
     )
-    ax_pano.scatter(bz, by, c="red", s=30, zorder=5)
+    ax_pano.scatter(bz, by, c=IMPLANT_CENTER_COLOR, s=30, zorder=5)
     ax_pano.set_title("Panoramic-like Reconstruction", fontsize=13)
     ax_pano.axis("off")
 
+    # Implant axis arrow on coronal view
+    _draw_axis_on_view(axes[1], (bx, bz), (axis_vec[0], axis_vec[2]), half_len_vox)
+
     # Summary text
     ax_summary.axis("off")
+
+    # Target region label
+    target_label = "Whole jaw (automatic)"
+    if target_region:
+        rtype = target_region.get("type", "")
+        if rtype == "side":
+            target_label = f"{target_region['value'].capitalize()} side"
+        elif rtype == "roi":
+            target_label = f"Click ROI {target_region['voxel']}"
+        elif rtype == "point":
+            target_label = f"Point {target_region['voxel']}"
+        elif rtype == "bbox":
+            target_label = f"BBox {target_region.get('min')}→{target_region.get('max')}"
+
     summary_lines = [
         "Planning Summary",
         "==============================",
+        f"Target Region: {target_label}",
         f"Implant Center: [{bx}, {by}, {bz}]",
         f"Implant Length:   {length_mm:.2f} mm",
         f"Implant Diameter: {diameter_mm:.2f} mm",
         f"Implant Angle:    {angle_deg:.1f}°",
-        f"Distance to Nerve: {distance_to_nerve_mm:.2f} mm",
+        f"Nerve Distance:   {distance_to_nerve_mm:.2f} mm",
+        "------------------------------",
+        "BONE BOUNDARIES",
+        f"Wall Distance:  {wall_distance_mm:.2f} mm" if wall_distance_mm else "Wall Distance:  N/A",
+        f"Bone Thickness: {bone_thickness_mm:.2f} mm" if bone_thickness_mm else "Bone Thickness: N/A",
         "==============================",
-        "BONE DENSITY ANALYSIS",
+        "BONE DENSITY ALONG PATH",
         "------------------------------",
         f"Mean Density:  {mean_hu:.1f} HU",
         f"Std Deviation: {std_hu:.1f} HU",
-        f">>> Class: {bone_class} <<<",
+        f">>> Misch Class: {bone_class} <<<",
         "",
         "HU Classification (Misch):",
         "  D1: >1250    Dense cortical",
@@ -491,18 +776,20 @@ def generate_detailed_viewer(image, nerve_mask, planning_meta, spacing,
         "  D3: 350-850  Thin porous",
         "  D4: <350     Fine trabecular",
         "------------------------------",
-        "Diameter choice by density:",
+        "Diameter refined by density:",
         "  D1 -> 3.5mm  D2 -> 4.0mm",
         "  D3 -> 4.5mm  D4 -> 5.0mm",
-        "Angle choice by density:",
-        "  D1/D2 -> 90°  D3 -> 85°  D4 -> 80°",
         "==============================",
         f"Voxel Spacing: ({sx:.2f}, {sy:.2f}, {sz:.2f})",
         "",
         "Legend:",
-        "Red contour = Predicted nerve",
+        "Orange contour = Predicted nerve",
         "Blue shape  = Implant body",
-        "Red dot     = Implant center",
+        "Blue dot    = Implant center",
+        "Green arrow = Implant axis",
+        "Orange dash = Bone boundary",
+        "Cyan shade  = Target region",
+        "Green +/box = User click ROI",
         "Yellow dot  = Section center",
         "Overlay     = Bone density map",
     ]

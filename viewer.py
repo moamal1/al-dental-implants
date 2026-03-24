@@ -90,7 +90,8 @@ def main():
 
     print(f"Image shape: {image.shape}")
     print(f"Spacing: ({sx:.3f}, {sy:.3f}, {sz:.3f}) mm")
-    print(f"Implant center: {meta['implant_center_voxel']}")
+    implant_center = meta.get("implant_center", meta.get("implant_center_voxel", "N/A"))
+    print(f"Implant center: {implant_center}")
 
     # ── Post-process nerve mask ───────────────────────────────────────
     print("Post-processing nerve mask...")

@@ -7,7 +7,7 @@ venv\Scripts\activate
 
 pip install -r requirements.txt
 
-# 3a. تشغيل ملف (بعد التشغيل راح يطلب منك رفع ملف الاشعة) pipeline 
+# 3a. تشغيل ملف (بعد التشغيل راح يطلب منك رفع ملف الاشعة ثم تحديد موقع الزرع بالنقر على الصورة) pipeline 
 
 python pipeline.py
 
@@ -18,6 +18,14 @@ python pipeline.py --dicom-file ضع-مسار-الكيس-هنا
 # 3c. تشغيل ملف pipeline مع مجلد الاشعة (DICOM folder)
 
 python pipeline.py --dicom-folder ضع-مسار-المجلد-هنا
+
+# 3d. تشغيل مع تحديد نقطة الزرع يدوياً (±5 فوكسلات حول النقطة)
+
+python pipeline.py --dicom-file ضع-مسار-الكيس-هنا --target-point 120,80,64
+
+# 3e. تشغيل مع تحديد جانب الفك (يسار / يمين)
+
+python pipeline.py --dicom-file ضع-مسار-الكيس-هنا --target-side left
 
 # 4. فتح النتيجة
 
