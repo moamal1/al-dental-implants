@@ -59,6 +59,18 @@ def compute_implant_voxel_dims(diameter_mm, length_mm, spacing):
 # Nerve mask post-processing
 # ═══════════════════════════════════════════════════════════════════════════
 
+def _foreground_crop_slices(mask, margin=8):
+    """Return a padded foreground bounding box for sparse 3-D masks."""
+    coords = np.argwhere(mask)
+    if len(coords) == 0:
+        return (slice(0, mask.shape[0]),
+                slice(0, mask.shape[1]),
+                slice(0, mask.shape[2]))
+
+    mins = np.maximum(coords.min(axis=0) - int(margin), 0)
+    maxs = np.minimum(coords.max(axis=0) + int(margin) + 1, mask.shape)
+    return tuple(slice(int(lo), int(hi)) for lo, hi in zip(mins, maxs))
+
 def keep_largest_components(mask, num_keep=2, min_size=200):
     """Keep only the N largest connected components above a minimum size."""
     struct = generate_binary_structure(3, 2)
@@ -67,24 +79,35 @@ def keep_largest_components(mask, num_keep=2, min_size=200):
     if num == 0:
         return mask.astype(np.uint8)
 
-    comps = []
-    for i in range(1, num + 1):
-        size = int((labeled == i).sum())
-        if size >= min_size:
-            comps.append((size, i))
-
-    if not comps:
+    component_sizes = np.bincount(labeled.ravel())
+    if len(component_sizes) <= 1:
         return mask.astype(np.uint8)
 
-    comps.sort(reverse=True)
-    keep_ids = [cid for _, cid in comps[:num_keep]]
+    candidate_ids = np.flatnonzero(component_sizes >= int(min_size))
+    candidate_ids = candidate_ids[candidate_ids != 0]
+
+    if len(candidate_ids) == 0:
+        return mask.astype(np.uint8)
+
+    ranked = candidate_ids[np.argsort(component_sizes[candidate_ids])[::-1]]
+    keep_ids = ranked[:num_keep]
     return np.isin(labeled, keep_ids).astype(np.uint8)
 
 
 def postprocess_nerve_mask(nerve_mask_raw):
-    """Clean the predicted nerve mask with morphological operations."""
+    """Clean the predicted nerve mask with morphology inside a tight ROI."""
+    raw_mask = nerve_mask_raw.astype(bool)
+    if not np.any(raw_mask):
+        return np.zeros_like(nerve_mask_raw, dtype=np.uint8)
+
+    crop_slices = _foreground_crop_slices(
+        raw_mask,
+        margin=config.NERVE_MASK_CROP_MARGIN,
+    )
+    mask = raw_mask[crop_slices]
+
     struct = generate_binary_structure(3, 1)
-    mask = binary_opening(nerve_mask_raw.astype(bool), structure=struct, iterations=1)
+    mask = binary_opening(mask, structure=struct, iterations=1)
     mask = binary_closing(mask, structure=struct, iterations=1)
     mask = binary_fill_holes(mask)
     mask = keep_largest_components(
@@ -92,7 +115,10 @@ def postprocess_nerve_mask(nerve_mask_raw):
         num_keep=config.NERVE_MASK_KEEP_COMPONENTS,
         min_size=config.NERVE_MASK_MIN_COMPONENT_SIZE,
     )
-    return mask.astype(np.uint8)
+
+    cleaned = np.zeros_like(raw_mask, dtype=np.uint8)
+    cleaned[crop_slices] = mask.astype(np.uint8)
+    return cleaned
 
 
 # ═══════════════════════════════════════════════════════════════════════════

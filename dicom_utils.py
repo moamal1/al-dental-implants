@@ -41,7 +41,9 @@ def convert_single_dicom_to_nifti(dcm_path, out_nifti):
     """
     try:
         ds = pydicom.dcmread(dcm_path)
-        ds.decompress()                     # decompress in-place if needed
+        tsuid = getattr(getattr(ds, "file_meta", None), "TransferSyntaxUID", None)
+        if getattr(tsuid, "is_compressed", False):
+            ds.decompress()
         arr = ds.pixel_array.astype(np.float32)
     except Exception as pydicom_err:
         # Fallback: let SimpleITK (which bundles GDCM) read the file

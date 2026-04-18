@@ -40,7 +40,11 @@ import config
 from dicom_utils import convert_single_dicom_to_nifti, convert_dicom_folder_to_nifti
 from inference import load_model, preprocess_image, run_inference, postprocess_prediction
 from planning import plan_implant
-from visualization import generate_basic_planning_figure, interactive_point_selector
+from visualization import (
+    generate_basic_planning_figure,
+    interactive_point_selector,
+    postprocess_nerve_mask,
+)
 
 
 def select_input_interactive():
@@ -212,8 +216,15 @@ def main():
     print(f"  Predicted mask (small): {pred_small.shape}, voxels={int(np.sum(pred_small))}")
 
     # ── Step 4: Post-process prediction ───────────────────────────────
+    print("  Cleaning predicted mask at inference scale ...")
+    pred_small = postprocess_nerve_mask(pred_small)
+    print(f"  Predicted mask (small, cleaned): {pred_small.shape}, voxels={int(np.sum(pred_small))}")
+
     pred_mask = postprocess_prediction(pred_small, orig_shape)
     print(f"  Predicted mask (restored): {pred_mask.shape}, voxels={int(np.sum(pred_mask))}")
+    print("  Refining restored mask inside foreground ROI ...")
+    pred_mask = postprocess_nerve_mask(pred_mask)
+    print(f"  Predicted mask (cleaned):   {pred_mask.shape}, voxels={int(np.sum(pred_mask))}")
 
     pred_nii = nib.Nifti1Image(
         pred_mask.astype(np.uint8), affine=orig_nii.affine, header=orig_nii.header

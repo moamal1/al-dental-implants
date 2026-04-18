@@ -1,7 +1,7 @@
 {
     "input_type": "single_dcm",
-    "input_path": "C:/Users/moamal/Downloads/IMGDATA/20251102/S0000001/I0000003",
-    "temporary_nifti_path": "C:\\Users\\moamal\\AppData\\Local\\Temp\\dicom_pipeline_4p45pbfm\\input_case.nii.gz",
+    "input_path": "C:/Users/moamal/Downloads/I0000003 (1)",
+    "temporary_nifti_path": "C:\\Users\\moamal\\AppData\\Local\\Temp\\dicom_pipeline_iaj101_6\\input_case.nii.gz",
     "predicted_mask_path": "C:\\Users\\moamal\\myProjects\\pyProject\\outputs\\predicted_ian_same_shape.nii.gz",
     "original_shape": [
         550,
@@ -15,38 +15,47 @@
     ],
     "mode": "automatic_pipeline",
     "implant_center": [
-        512,
-        325,
-        229
+        144,
+        249,
+        304
     ],
-    "implant_length": 8.0,
-    "implant_diameter": 3.5,
-    "implant_angle": 77.0,
+    "implant_length": 14.0,
+    "implant_diameter": 5.0,
+    "implant_angle": 75.0,
     "implant_axis_vector": [
-        -0.8097,
-        0.4689,
-        0.3528
+        0.8531,
+        0.2337,
+        0.4666
     ],
-    "bone_density_hu": 765.2,
-    "bone_density_std_hu": 625.5,
-    "bone_density_class": "D3",
-    "nerve_distance": 7.44,
-    "bone_depth_mm": 5.3,
-    "bone_thickness_mm": 4.54,
-    "wall_distance_mm": 2.27,
-    "bone_voxels": 18664727,
+    "bone_density_hu": 856.3,
+    "bone_density_std_hu": 141.5,
+    "bone_density_class": "D2",
+    "nerve_distance": 250.39,
+    "bone_depth_mm": 262.5,
+    "bone_thickness_mm": 12.0,
+    "wall_distance_mm": 6.0,
+    "bone_voxels": 89772903,
     "nerve_safety_ok": true,
+    "nerve_adjusted": false,
+    "nerve_adjustments": {},
     "voxel_spacing_mm": [
-        0.20000000298023224,
-        0.20000000298023224,
-        0.20000000298023224
+        1.0,
+        1.0,
+        1.0
     ],
-    "target_region": {
-        "type": "roi",
-        "voxel": [
-            517,
-            327,
-            230
-        ]
-    }
+    "target_region": null,
+    "selection_stage": "relaxed_anatomical_filter+gap_locked",
+    "site_depth_from_crest_mm": 6.0,
+    "tooth_above_ratio": 0.0,
+    "site_hu": 900.0,
+    "site_score": 13.65,
+    "gap_regions_found": 86,
+    "gap_candidates": 95,
+    "gap_used": true,
+    "tooth_clearance_mm": 14.53,
+    "local_density_hu": 880.2,
+    "air_above_mm": Infinity,
+    "gap_center_dist_mm": 41.6,
+    "bl_centering_mm": 14.0,
+    "occlusal_level_vox": 131.0
 }
